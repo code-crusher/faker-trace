@@ -246,6 +246,15 @@ class TestEnCA(unittest.TestCase):
         for _ in range(1000):
             assert self.fake.ssn()[0] in "1234567"
 
+    def test_ssn_can_contain_every_digit(self):
+        # The eight source digits used to be drawn with random.sample(range(9), 8),
+        # which made a 9 impossible and the digits mutually distinct. A real SIN
+        # may carry any digit in any position, so make sure all of 0-9 are reachable.
+        seen = set()
+        for _ in range(5000):
+            seen.update(int(digit) for digit in self.fake.ssn().replace(" ", "")[:8])
+        assert seen == set(range(10))
+
 
 class TestEnGB(unittest.TestCase):
     def setUp(self):
