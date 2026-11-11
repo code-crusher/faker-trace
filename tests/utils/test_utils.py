@@ -54,6 +54,23 @@ class UtilsTestCase(unittest.TestCase):
         samples = choices_distribution_unique(a, p, length=4)
         assert len(set(samples)) == len(samples)
 
+    def test_choices_distribution_unique_without_probabilities(self):
+        a = ("a", "b", "c", "d")
+        samples = choices_distribution_unique(a, None, length=4)
+        assert sorted(samples) == ["a", "b", "c", "d"]
+
+    def test_choices_distribution_unique_with_zero_weights(self):
+        a = ("a", "b", "c")
+        p = (0.0, 0.5, 0.5)
+        # Only the positive-weight elements can be sampled
+        samples = choices_distribution_unique(a, p, length=2)
+        assert sorted(samples) == ["b", "c"]
+
+        # Once only zero weights remain, a helpful error is raised
+        with self.assertRaises(ValueError) as exc_info:
+            choices_distribution_unique(a, p, length=3)
+        assert str(exc_info.exception) == "Total of weights must be greater than zero"
+
     def test_get_path(self):
         result = get_path(faker)
         assert isinstance(result, str)

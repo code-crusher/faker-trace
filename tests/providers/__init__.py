@@ -233,6 +233,45 @@ class TestBaseProvider:
         for _ in range(num_samples):
             assert faker.random_element(choices) in choices
 
+    def test_random_elements(self, faker, num_samples):
+        # Too many unique samples requested
+        with pytest.raises(ValueError):
+            faker.random_elements("abcd", length=5, unique=True)
+
+        # Same length with replacement
+        elements = ("a", "b", "c", "d")
+        for _ in range(num_samples):
+            samples = faker.random_elements(elements, length=10)
+            assert len(samples) == 10
+
+        # Same length without replacement
+        for _ in range(num_samples):
+            samples = faker.random_elements(elements, length=4, unique=True)
+            assert sorted(samples) == list(elements)
+
+        # Weighted sampling without replacement skips zero-weight elements
+        for _ in range(num_samples):
+            samples = faker.random_elements(
+                OrderedDict([("a", 0), ("b", 0.5), ("c", 0.5)]),
+                length=2,
+                unique=True,
+            )
+            assert sorted(samples) == ["b", "c"]
+
+        # Once only zero weights remain, a helpful error is raised
+        with pytest.raises(ValueError, match="Total of weights must be greater than zero"):
+            faker.random_elements(OrderedDict([("a", 0), ("b", 1)]), length=2, unique=True)
+
+        # Without weighting, a uniform sample of the keys is returned
+        for _ in range(num_samples):
+            samples = faker.random_elements(
+                OrderedDict([("a", 1), ("b", 1)]),
+                length=2,
+                unique=True,
+                use_weighting=False,
+            )
+            assert sorted(samples) == ["a", "b"]
+
     def test_random_sample(self, faker):
         # Too many items requested
         with pytest.raises(ValueError):
