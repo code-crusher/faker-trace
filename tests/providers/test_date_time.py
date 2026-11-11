@@ -9,7 +9,7 @@ import zoneinfo
 
 from datetime import date, datetime
 from datetime import time as datetime_time
-from datetime import timedelta, tzinfo
+from datetime import timedelta, timezone, tzinfo
 
 import freezegun
 import pytest
@@ -652,6 +652,44 @@ class TestDateTime(unittest.TestCase):
         assert [dt for dt, _ in series] == [
             datetime(1970, 1, 1, tzinfo=utc) + timedelta(seconds=step / 4) for step in range(4)
         ]
+
+    def test_time_series_negative_timestamps(self):
+        # Pre-epoch timestamps must keep their fractional seconds and be relative
+        # to the UTC epoch regardless of the requested timezone.
+        zones = [
+            utc,
+            timezone.utc,
+            timezone(timedelta(hours=5, minutes=30)),
+            timezone(timedelta(hours=-8)),
+        ]
+        for tzinfo_ in zones:
+            with self.subTest(tzinfo=tzinfo_):
+                series = list(self.fake.time_series(-2, 0, precision=0.5, tzinfo=tzinfo_))
+                assert [dt.timestamp() for dt, _ in series] == [-2.0, -1.5, -1.0, -0.5]
+
+    def test_time_series_epoch_crossing(self):
+        for tzinfo_ in (timezone.utc, timezone(timedelta(hours=5, minutes=30))):
+            with self.subTest(tzinfo=tzinfo_):
+                series = list(self.fake.time_series(-1, 1, precision=0.5, tzinfo=tzinfo_))
+                assert [dt.timestamp() for dt, _ in series] == [-1.0, -0.5, 0.0, 0.5]
+
+    def test_time_series_nonnegative_timestamps(self):
+        # Nonnegative timestamps keep working as before across timezones.
+        for tzinfo_ in (timezone.utc, timezone(timedelta(hours=5, minutes=30))):
+            with self.subTest(tzinfo=tzinfo_):
+                series = list(self.fake.time_series(0, 2, precision=0.5, tzinfo=tzinfo_))
+                assert [dt.timestamp() for dt, _ in series] == [0.0, 0.5, 1.0, 1.5]
+
+    def test_time_series_negative_timestamps_naive(self):
+        # The naive convention still returns UTC wall-clock values.
+        series = list(self.fake.time_series(-2, 0, precision=0.5))
+        assert [dt for dt, _ in series] == [
+            datetime(1969, 12, 31, 23, 59, 58),
+            datetime(1969, 12, 31, 23, 59, 58, 500000),
+            datetime(1969, 12, 31, 23, 59, 59),
+            datetime(1969, 12, 31, 23, 59, 59, 500000),
+        ]
+        assert all(dt.tzinfo is None for dt, _ in series)
 
     def test_time_series_equal_bounds(self):
         assert list(self.fake.time_series(0, 0, tzinfo=utc)) == []

@@ -2619,4 +2619,8 @@ def convert_timestamp_to_datetime(timestamp: Union[int, float], tzinfo: TzInfo) 
     if timestamp >= 0:
         return dt.datetime.fromtimestamp(timestamp, tzinfo)
     else:
-        return dt.datetime(1970, 1, 1, tzinfo=tzinfo) + dt.timedelta(seconds=int(timestamp))
+        # Unix timestamps are relative to the UTC epoch, so do the arithmetic in
+        # UTC to keep the fractional seconds and only then convert to ``tzinfo``.
+        # This also avoids relying on platform support for negative timestamps.
+        epoch = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
+        return (epoch + dt.timedelta(seconds=timestamp)).astimezone(tzinfo)
