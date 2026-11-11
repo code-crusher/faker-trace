@@ -2,7 +2,8 @@ import re
 import string
 
 from collections import OrderedDict
-from typing import Any, Collection, List, Optional, Sequence, TypeVar, Union
+from itertools import accumulate
+from typing import Any, Collection, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
 
 from ..generator import Generator
 from ..typing import OrderedDictType
@@ -24,6 +25,12 @@ class BaseProvider:
     __provider__ = "base"
     __lang__: Optional[str] = None
     __use_weighting__ = False
+
+    # Maps a class-level weighted table (e.g. a locale's ``last_names``) to its
+    # keys and cumulative weights, so weighted draws can skip re-reading the
+    # table on every call. Computed on first instantiation and stored on the
+    # class, where it is shared by all instances (See #2499).
+    _weighted_tables: Optional[Dict[int, Tuple[Tuple, List]]] = None
 
     # Locales supported by Linux Mint from `/usr/share/i18n/SUPPORTED`
     language_locale_codes = {
@@ -289,6 +296,25 @@ class BaseProvider:
         :param generator: `Generator` instance
         """
         self.generator = generator
+        cls = type(self)
+        if "_weighted_tables" not in cls.__dict__:
+            # Precompute keys and cumulative weights for the class's own locale
+            # tables (``last_names``, ``first_names``, formats, ...). They are
+            # defined at class level and never modified afterwards, so the
+            # cumulative sums computed once stay valid (See #2499). The cache
+            # lives on the class, so it is shared by all its instances.
+            tables = dict(cls._weighted_tables or {})
+            for klass in reversed(cls.__mro__):
+                for value in klass.__dict__.values():
+                    is_weighted = (
+                        isinstance(value, OrderedDict)
+                        and value
+                        and all(isinstance(w, (int, float)) for w in value.values())
+                    )
+                    if is_weighted:
+                        keys = tuple(value.keys())
+                        tables[id(value)] = (keys, list(accumulate(value.values())))
+            cls._weighted_tables = tables
 
     def locale(self) -> str:
         """Generate a random underscored i18n locale code (e.g. en_US)."""
@@ -478,32 +504,59 @@ class BaseProvider:
         if isinstance(elements, dict) and not isinstance(elements, OrderedDict):
             raise ValueError("Use OrderedDict only to avoid dependency on PYTHONHASHSEED (See #363).")
 
-        fn = choices_distribution_unique if unique else choices_distribution
-
         if length is None:
             length = self.generator.random.randint(1, len(elements))
 
         if unique and length > len(elements):
             raise ValueError("Sample length cannot be longer than the number of unique elements to pick from.")
 
-        if isinstance(elements, dict):
-            if not hasattr(elements, "_key_cache"):
-                elements._key_cache = tuple(elements.keys())  # type: ignore
+        choices: Collection[T]
+        probabilities: Optional[Sequence[float]] = None
+        cum_weights: Optional[Sequence[float]] = None
 
-            choices = elements._key_cache  # type: ignore[attr-defined, union-attr]
-            probabilities = tuple(elements.values()) if use_weighting else None
+        if isinstance(elements, dict):
+            # Sampling without replacement rebuilds the distribution on every
+            # draw, so only non-unique draws can use precomputed sums.
+            tables = None if unique else type(self)._weighted_tables
+            table = tables.get(id(elements)) if tables is not None else None
+            if table is not None:
+                # The provider's own class-level table: reuse the keys and, for
+                # weighted sampling, the cumulative weights computed once at
+                # instantiation (See #2499). Such tables never change, so the
+                # precomputed sums stay valid. Mappings passed in by callers
+                # are never in the cache and keep the fresh-read path below.
+                if use_weighting:
+                    choices, cum_weights = table
+                else:
+                    choices = table[0]
+            else:
+                if not hasattr(elements, "_key_cache"):
+                    elements._key_cache = tuple(elements.keys())  # type: ignore
+
+                choices = elements._key_cache  # type: ignore[attr-defined, union-attr]
+                if use_weighting:
+                    probabilities = tuple(elements.values())
         else:
             if unique:
                 # shortcut
                 return self.generator.random.sample(elements, length)
             choices = elements
-            probabilities = None
 
-        return fn(
+        if unique:
+            # ``choices_distribution_unique`` rebuilds the distribution on
+            # every draw, so the cumulative form is not used there.
+            return choices_distribution_unique(
+                tuple(choices),
+                probabilities,
+                self.generator.random,
+                length=length,
+            )
+        return choices_distribution(
             tuple(choices),
             probabilities,
             self.generator.random,
             length=length,
+            cum_weights=cum_weights,
         )
 
     def random_choices(

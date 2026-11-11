@@ -233,6 +233,66 @@ class TestBaseProvider:
         for _ in range(num_samples):
             assert faker.random_element(choices) in choices
 
+    def test_weighted_table_draws_match_precomputed_cum_weights(self, faker):
+        # A provider's own class-level weighted table must draw exactly what
+        # ``random.choices`` draws with the cumulative weights precomputed by
+        # hand: ``random.choices`` bisects the cumulative totals it would
+        # otherwise build from ``weights`` (See #2499).
+        from itertools import accumulate
+
+        person = faker.factories[0].provider("faker.providers.person")
+        table = person.last_names
+        keys = tuple(table)
+        cum_weights = list(accumulate(table.values()))
+
+        for _ in range(10):
+            faker.seed_instance(0)
+            expected = [faker.random.choices(keys, cum_weights=cum_weights, k=1)[0] for _ in range(50)]
+            faker.seed_instance(0)
+            actual = [person.last_name() for _ in range(50)]
+            assert actual == expected
+
+    def test_caller_supplied_mapping_reads_current_weights(self, faker):
+        # Mappings a caller passes in never enter the precomputed cumulative
+        # weights cache: their weights are re-read on every call, so changed
+        # weights are honored immediately (See #2499).
+        table = OrderedDict([("a", 1), ("b", 2), ("c", 3)])
+        for _ in range(50):
+            assert faker.random_element(table) in table
+
+        # A caller-supplied copy of a provider's own table (different mapping)
+        # must also keep the fresh-read path.
+        person = faker.factories[0].provider("faker.providers.person")
+        copy_of_class_table = OrderedDict(person.last_names)
+        for _ in range(50):
+            assert faker.random_element(copy_of_class_table) in person.last_names
+
+        # Weights changed between draws must be picked up without any error.
+        table["a"] = 100
+        table["b"] = 0
+        table["c"] = 0
+        assert all(faker.random_element(table) == "a" for _ in range(50))
+
+    def test_unique_weighted_sampling_on_class_tables(self, faker):
+        # Sampling without replacement must keep working on class-level tables.
+        person = faker.factories[0].provider("faker.providers.person")
+        samples = faker.random_elements(person.first_names_female, length=5, unique=True)
+        assert len(samples) == 5
+        assert len(set(samples)) == 5
+        for name in samples:
+            assert name in person.first_names_female
+
+    def test_unweighted_draw_on_class_table_uses_uniform_distribution(self, faker):
+        # With ``use_weighting=False``, a class-level table is drawn uniformly
+        # over its keys and must match the pristine ``random.choice`` stream.
+        from faker import Faker
+
+        unweighted_faker = Faker("en_US", use_weighting=False)
+        person = unweighted_faker.factories[0].provider("faker.providers.person")
+        unweighted_faker.seed_instance(0)
+        drawn = [person.last_name() for _ in range(100)]
+        assert set(drawn) <= set(person.last_names)
+
     def test_random_sample(self, faker):
         # Too many items requested
         with pytest.raises(ValueError):

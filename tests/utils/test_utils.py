@@ -54,6 +54,26 @@ class UtilsTestCase(unittest.TestCase):
         samples = choices_distribution_unique(a, p, length=4)
         assert len(set(samples)) == len(samples)
 
+    def test_choices_distribution_cum_weights(self):
+        # ``cum_weights`` is the cumulative form of ``weights``: passing
+        # precomputed sums must draw the same values (See #2499).
+        import random
+
+        from itertools import accumulate
+
+        a = ("a", "b", "c", "d")
+        p = (0.5, 0.2, 0.2, 0.1)
+        cum_p = list(accumulate(p))
+
+        weights_rng = random.Random(0)
+        cum_rng = random.Random(0)
+        for _ in range(100):
+            assert weights_rng.choices(a, weights=p, k=7) == cum_rng.choices(a, cum_weights=cum_p, k=7)
+
+        # Passing cumulative weights with a mismatched length must fail loudly.
+        with self.assertRaises(AssertionError):
+            choices_distribution(a, None, cum_weights=(0.5, 0.7, 1.0), length=1)
+
     def test_get_path(self):
         result = get_path(faker)
         assert isinstance(result, str)
