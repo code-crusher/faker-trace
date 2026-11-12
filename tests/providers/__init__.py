@@ -233,6 +233,61 @@ class TestBaseProvider:
         for _ in range(num_samples):
             assert faker.random_element(choices) in choices
 
+    def test_random_elements_after_ordereddict_replacement(self, faker):
+        """Replacing the contents of an ``OrderedDict`` must not return stale keys (#2485)."""
+        elements = OrderedDict([("old", 1)])
+        assert faker.random_elements(elements, length=1) == ["old"]
+
+        elements.clear()
+        elements["new"] = 1
+        assert faker.random_elements(elements, length=1) == ["new"]
+
+    def test_random_elements_after_ordereddict_insertion(self, faker):
+        """Keys inserted after the first call must be sampleable (#2485)."""
+        elements = OrderedDict([("a", 1.0)])
+        faker.random_elements(elements, length=1, use_weighting=False)
+
+        elements["b"] = 1.0
+        samples = faker.random_elements(elements, length=400, use_weighting=False)
+        assert set(samples) == {"a", "b"}
+
+    def test_random_elements_after_ordereddict_deletion(self, faker):
+        """Keys deleted after the first call must not be sampleable (#2485)."""
+        elements = OrderedDict([("a", 1.0), ("b", 1.0)])
+        faker.random_elements(elements, length=1, use_weighting=False)
+
+        del elements["a"]
+        samples = faker.random_elements(elements, length=400, use_weighting=False)
+        assert set(samples) == {"b"}
+
+    def test_random_elements_after_ordereddict_deletion_with_weighting(self, faker):
+        """Stale keys used to make the cached population and weights differ in length (#2485)."""
+        elements = OrderedDict([("a", 1.0), ("b", 1.0)])
+        faker.random_elements(elements, length=1, use_weighting=True)
+
+        del elements["a"]
+        assert set(faker.random_elements(elements, length=400, use_weighting=True)) == {"b"}
+
+    def test_random_elements_after_ordereddict_reordering(self, faker):
+        """Reordering must keep each key paired with its own weight (#2485)."""
+        elements = OrderedDict([("a", 1.0), ("b", 0.0)])
+        faker.random_elements(elements, length=1, use_weighting=True)
+
+        elements.move_to_end("a")  # now ordered [b(0.0), a(1.0)]
+        samples = faker.random_elements(elements, length=100, use_weighting=True)
+        assert set(samples) == {"a"}
+
+    def test_random_elements_unique_after_ordereddict_mutation(self, faker):
+        """Unique weighted sampling must also use the current mapping (#2485)."""
+        elements = OrderedDict([("a", 1.0), ("b", 1.0)])
+        faker.random_elements(elements, length=1, unique=True, use_weighting=True)
+
+        del elements["a"]
+        assert faker.random_elements(elements, length=1, unique=True, use_weighting=True) == ["b"]
+
+        elements["c"] = 1.0
+        assert sorted(faker.random_elements(elements, length=2, unique=True, use_weighting=True)) == ["b", "c"]
+
     def test_random_sample(self, faker):
         # Too many items requested
         with pytest.raises(ValueError):
