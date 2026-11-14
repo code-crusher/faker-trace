@@ -12,6 +12,7 @@ import pytest
 
 from stdnum.bg import vat as bg_vat
 from stdnum.gb import vat as gb_vat
+from stdnum.ve import rif as ve_rif
 from validators.i18n.es import es_cif as is_cif
 from validators.i18n.es import es_nie as is_nie
 from validators.i18n.es import es_nif as is_nif
@@ -25,6 +26,7 @@ from faker.providers.ssn.es_CL import rut_check_digit as cl_rut_checksum
 from faker.providers.ssn.es_CO import nit_check_digit
 from faker.providers.ssn.es_MX import curp_checksum as mx_curp_checksum
 from faker.providers.ssn.es_MX import ssn_checksum as mx_ssn_checksum
+from faker.providers.ssn.es_VE import rif_check_digit as ve_rif_check_digit
 from faker.providers.ssn.et_EE import checksum as et_checksum
 from faker.providers.ssn.fi_FI import Provider as fi_Provider
 from faker.providers.ssn.fr_FR import Provider as fr_Provider
@@ -835,6 +837,40 @@ class TestEsMX:
     def test_elector_code_unsupported_gender(self):
         with pytest.raises(ValueError, match="Gender must be"):
             self.fake.elector_code("Z")
+
+
+class TestEsVE(unittest.TestCase):
+    def setUp(self):
+        self.fake = Faker("es_VE")
+        Faker.seed(0)
+
+    def test_cedula(self):
+        for _ in range(100):
+            cedula = self.fake.cedula()
+            assert re.fullmatch(r"[VE]-\d{7,8}", cedula)
+            number = int(cedula[2:])
+            assert 1000000 <= number <= 99999999
+
+    def test_ssn_is_cedula(self):
+        for _ in range(100):
+            assert re.fullmatch(r"[VE]-\d{7,8}", self.fake.ssn())
+
+    def test_rif(self):
+        for _ in range(100):
+            rif = self.fake.rif()
+            assert re.fullmatch(r"[VEJPG]-\d{8}-\d", rif)
+            assert ve_rif.is_valid(rif)
+
+    def test_rif_check_digit(self):
+        # Example RIF from the python-stdnum documentation
+        assert ve_rif.is_valid("V-11470283-4")
+        assert ve_rif_check_digit("V", "11470283") == "4"
+
+    def test_rif_check_digit_matches_stdnum(self):
+        for rif_type in "VEJPG":
+            for body in ("00000000", "12345678", "99999999"):
+                check = ve_rif_check_digit(rif_type, body)
+                assert ve_rif.calc_check_digit(f"{rif_type}{body}0") == check
 
 
 class TestEtEE(unittest.TestCase):

@@ -3977,6 +3977,29 @@ class Faker:
         """
         ...
 
+    def cedula(self) -> str:
+        """
+        Generate a Venezuelan cédula de identidad: a type letter (``V`` for Venezuelan
+        nationals, ``E`` for naturalized/foreign residents) followed by a number.
+
+        :return: a random Venezuelan cédula de identidad
+
+        :sample:
+        """
+        ...
+
+    def rif(self) -> str:
+        """
+        Generate a Venezuelan RIF (Registro Único de Información Fiscal): a type
+        letter (one of ``V``, ``E``, ``J``, ``P`` or ``G``), 8 digits and a check
+        digit computed the same way as in :mod:`stdnum.ve.rif`.
+
+        :return: a random Venezuelan RIF
+
+        :sample:
+        """
+        ...
+
     def first_name_est(self) -> str: ...
     def first_name_female_est(self) -> str: ...
     def first_name_female_rus(self) -> str: ...
