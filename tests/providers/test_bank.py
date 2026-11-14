@@ -11,6 +11,7 @@ from faker.providers.bank.az_AZ import Provider as AzAzBankProvider
 from faker.providers.bank.cs_CZ import Provider as CsCZBankProvider
 from faker.providers.bank.da_DK import Provider as DaDkBankProvider
 from faker.providers.bank.de_CH import Provider as DeChBankProvider
+from faker.providers.bank.de_DE import Provider as DeDeBankProvider
 from faker.providers.bank.el_GR import Provider as ElGrBankProvider
 from faker.providers.bank.en_GB import Provider as EnGbBankProvider
 from faker.providers.bank.en_IE import Provider as EnIeBankProvider
@@ -142,6 +143,26 @@ class TestDeCh:
 
 class TestDeDe:
     """Test de_DE bank provider"""
+
+    def test_bban(self, faker, num_samples):
+        for _ in range(num_samples):
+            bban = faker.bban()
+            assert re.fullmatch(r"\d{18}", bban)
+            # the BBAN must start with a registered Bankleitzahl
+            assert bban[:8] in DeDeBankProvider.bank_codes
+
+    def test_iban(self, faker, num_samples):
+        for _ in range(num_samples):
+            iban = faker.iban()
+            assert is_valid_iban(iban)
+            assert iban[:2] == DeDeBankProvider.country_code
+            assert re.fullmatch(r"\d{2}\d{18}", iban[2:])
+            # the Bankleitzahl must be a registered German bank code
+            assert iban[4:12] in DeDeBankProvider.bank_codes
+
+    def test_iban_stdnum(self, faker, num_samples):
+        for _ in range(num_samples):
+            iban_validator.validate(faker.iban())
 
     def test_swift_use_dataset(self, faker, num_samples):
         regex = re.compile("[A-Z]{6}[A-Z2-9][A-NP-Z0-9]([A-Z0-9]{3})?")
